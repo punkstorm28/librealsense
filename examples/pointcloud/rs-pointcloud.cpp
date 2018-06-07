@@ -44,7 +44,7 @@ int main(int argc, char * argv[]) try
         pc.map_to(color);
 
         // Upload the color frame to OpenGL
-        app_state.tex.upload(color);
+       //app_state.tex.upload(color);
 
         // Draw the pointcloud
         draw_pointcloud(app.width(), app.height(), app_state, points);

@@ -101,9 +101,15 @@ public:
         for (auto&& view : _devices)
         {
             // Ask each pipeline if there are new frames available
+
             rs2::frameset frameset;
             if (view.second.pipe.poll_for_frames(&frameset))
             {
+	
+				auto depth = frameset.get_depth_frame();
+
+				std::cout <<"from "<<view.first<< " dist=" << depth.get_distance(10, 10) << std::endl;
+
                 for (int i = 0; i < frameset.size(); i++)
                 {
                     rs2::frame new_frame = frameset[i];
@@ -128,7 +134,7 @@ public:
                     view.second.tex.upload(id_to_frame.second);
                 }
                 rect frame_location{ view_width * (stream_no % cols), view_height * (stream_no / cols), view_width, view_height };
-                if (rs2::video_frame vid_frame = id_to_frame.second.as<rs2::video_frame>())
+                if (rs2::depth_frame vid_frame = id_to_frame.second.as<rs2::depth_frame>())
                 {
                     rect adjuested = frame_location.adjust_ratio({ static_cast<float>(vid_frame.get_width())
                                                                  , static_cast<float>(vid_frame.get_height()) });
