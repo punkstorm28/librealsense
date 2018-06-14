@@ -407,6 +407,11 @@ namespace rs2
     class video_frame : public frame
     {
     public:
+
+		video_frame() {
+
+		}
+
         video_frame(const frame& f)
             : frame(f)
         {
@@ -539,6 +544,11 @@ namespace rs2
     class depth_frame : public video_frame
     {
     public:
+		depth_frame() 
+		:video_frame(){
+
+		}
+
         depth_frame(const frame& f)
             : video_frame(f)
         {

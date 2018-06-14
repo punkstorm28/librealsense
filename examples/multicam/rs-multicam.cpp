@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <mutex>                    // std::mutex, std::lock_guard
 #include <cmath>                    // std::ceil
+#include <fstream>
 
 const std::string no_camera_message = "No camera connected, please connect 1 or more";
 const std::string platform_camera_name = "Platform Camera";
@@ -23,6 +24,7 @@ class device_container
         texture tex;
         rs2::pipeline pipe;
         rs2::pipeline_profile profile;
+		rs2::stream_profile stream_profile;
     };
 
 public:
@@ -36,7 +38,7 @@ public:
         {
             return; //already in
         }
-
+		
         // Ignoring platform cameras (webcams, etc..)
         if (platform_camera_name == dev.get_info(RS2_CAMERA_INFO_NAME))
         {
@@ -48,8 +50,10 @@ public:
         c.enable_device(serial_number);
         // Start the pipeline with the configuration
         rs2::pipeline_profile profile = p.start(c);
+	
         // Hold it internally
         _devices.emplace(serial_number, view_port{ {},{},{}, p, profile });
+		
 
     }
 
@@ -94,56 +98,132 @@ public:
         return count;
     }
 
-    void poll_frames()
-    {
-        std::lock_guard<std::mutex> lock(_mutex);
-        // Go over all device
+	void mergeFrames(rs2::depth_frame& frame1, rs2::depth_frame& frame2)
+	{
+		//const int frameWidth = frame1.get_width();
+		//const int frameHeight = frame1.get_height();
+		//std::cout << frameHeight << " - " << frameWidth;
+	}
+
+	void poll_frames()
+	{
+		std::lock_guard<std::mutex> lock(_mutex);
+		// Go over all device
+		int number_of_devices = _devices.size();
+		int current_device = 0;
+
+		rs2::depth_frame frames[3];
+		rs2::stream_profile profiles[3];
+
         for (auto&& view : _devices)
         {
             // Ask each pipeline if there are new frames available
 
+			rs2::device selected_device = view.second.profile.get_device();
+			auto depth_sensor = selected_device.first<rs2::depth_sensor>();
+
+			
             rs2::frameset frameset;
             if (view.second.pipe.poll_for_frames(&frameset))
             {
-	
-				auto depth = frameset.get_depth_frame();
-
-				std::cout <<"from "<<view.first<< " dist=" << depth.get_distance(10, 10) << std::endl;
-
+				frames[current_device] = frameset.get_depth_frame();
                 for (int i = 0; i < frameset.size(); i++)
                 {
                     rs2::frame new_frame = frameset[i];
                     int stream_id = new_frame.get_profile().unique_id();
                     view.second.frames_per_stream[stream_id] = view.second.colorize_frame(new_frame); //update view port with the new stream
                 }
+				
+				profiles[current_device] = frames[current_device].get_profile();
+				//std::vector<std::vector<float>> vec1 = getPixelCloud(frames[current_device]);
+				if (current_device ==2) {
+					get_extrinsics(profiles[0], profiles[1]);
+					//writeVerticesToCsv(frames[current_device]);
+				    //exit(9);
+				}
+
             }
+			current_device++;
         }
+		mergeFrames(frames[0], frames[1]);
+
     }
-    void render_textures(int cols, int rows, float view_width, float view_height)
-    {
-        std::lock_guard<std::mutex> lock(_mutex);
-        int stream_no = 0;
-        for (auto&& view : _devices)
-        {
-            // For each device get its frames
-            for (auto&& id_to_frame : view.second.frames_per_stream)
-            {
-                // If the frame is available
-                if (id_to_frame.second)
-                {
-                    view.second.tex.upload(id_to_frame.second);
-                }
-                rect frame_location{ view_width * (stream_no % cols), view_height * (stream_no / cols), view_width, view_height };
-                if (rs2::depth_frame vid_frame = id_to_frame.second.as<rs2::depth_frame>())
-                {
-                    rect adjuested = frame_location.adjust_ratio({ static_cast<float>(vid_frame.get_width())
-                                                                 , static_cast<float>(vid_frame.get_height()) });
-                    view.second.tex.show(adjuested);
-                    stream_no++;
-                }
-            }
-        }
-    }
+
+	static void get_extrinsics(const rs2::stream_profile& from_stream, const rs2::stream_profile& to_stream)
+	{
+		// If the device/sensor that you are using contains more than a single stream, and it was calibrated
+		// then the SDK provides a way of getting the transformation between any two streams (if such exists)
+		try
+		{
+			// Given two streams, use the get_extrinsics_to() function to get the transformation from the stream to the other stream
+			rs2_extrinsics extrinsics = from_stream.get_extrinsics_to(to_stream);
+			std::cout << "Translation Vector : [" << extrinsics.translation[0] << "," << extrinsics.translation[1] << "," << extrinsics.translation[2] << "]\n";
+			std::cout << "Rotation Matrix    : [" << extrinsics.rotation[0] << "," << extrinsics.rotation[3] << "," << extrinsics.rotation[6] << "]\n";
+			std::cout << "                   : [" << extrinsics.rotation[1] << "," << extrinsics.rotation[4] << "," << extrinsics.rotation[7] << "]\n";
+			std::cout << "                   : [" << extrinsics.rotation[2] << "," << extrinsics.rotation[5] << "," << extrinsics.rotation[8] << "]" << std::endl;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << "Failed to get extrinsics for the given streams. " << e.what() << std::endl;
+		}
+	}
+
+	void render_textures(int cols, int rows, float view_width, float view_height)
+	{
+		std::lock_guard<std::mutex> lock(_mutex);
+		int stream_no = 0;
+		for (auto&& view : _devices)
+		{
+			// For each device get its frames
+			for (auto&& id_to_frame : view.second.frames_per_stream)
+			{
+				// If the frame is available
+				if (id_to_frame.second)
+				{
+					view.second.tex.upload(id_to_frame.second);
+				}
+				rect frame_location{ view_width * (stream_no % cols), view_height * (stream_no / cols), view_width, view_height };
+				if (rs2::depth_frame vid_frame = id_to_frame.second.as<rs2::depth_frame>())
+				{
+					rect adjuested = frame_location.adjust_ratio({ static_cast<float>(vid_frame.get_width())
+						, static_cast<float>(vid_frame.get_height()) });
+					view.second.tex.show(adjuested);
+					stream_no++;
+				}
+			}
+		}
+	}
+
+	void writeVerticesToCsv(rs2::depth_frame frame)
+	{
+		std::stringstream csv_file;
+		csv_file << "robot1_45.csv";
+		metadata_to_csv(frame, csv_file.str());
+	}
+
+	void metadata_to_csv(const rs2::depth_frame frame, const std::string& filename)
+	{
+		std::ofstream csv;
+
+		csv.open(filename);
+		rs2::pointcloud cloud;
+		rs2::points points = cloud.calculate(frame);
+
+		auto vertices = points.get_vertices();
+
+		for (int i = 0; i < points.size(); i++)
+		{
+			if (vertices[i].z)
+			{
+				csv << vertices[i].x << "," << vertices[i].y << "," << vertices[i].z << "\n";
+			}
+		}
+
+		csv.close();
+	}
+
+
+    
 private:
     std::mutex _mutex;
     std::map<std::string, view_port> _devices;
@@ -152,8 +232,9 @@ private:
 
 int main(int argc, char * argv[]) try
 {
+	int call_count = 0;
     // Create a simple OpenGL window for rendering:
-    window app(1280, 960, "CPP Multi-Camera Example");
+    window app(1280, 960, "REALSENSE OF HUMOUR");
 
     device_container connected_devices;
 
@@ -196,6 +277,8 @@ int main(int argc, char * argv[]) try
         float view_height = (app.height() / rows);
 
         connected_devices.render_textures(cols, rows, view_width, view_height);
+
+		call_count++;
     }
 
     return EXIT_SUCCESS;
