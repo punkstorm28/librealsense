@@ -121,7 +121,6 @@ public:
 
 			rs2::device selected_device = view.second.profile.get_device();
 			auto depth_sensor = selected_device.first<rs2::depth_sensor>();
-
 			
             rs2::frameset frameset;
             if (view.second.pipe.poll_for_frames(&frameset))
@@ -137,7 +136,6 @@ public:
 				profiles[current_device] = frames[current_device].get_profile();
 				//std::vector<std::vector<float>> vec1 = getPixelCloud(frames[current_device]);
 				if (current_device ==2) {
-					get_extrinsics(profiles[0], profiles[1]);
 					//writeVerticesToCsv(frames[current_device]);
 				    //exit(9);
 				}
@@ -149,24 +147,6 @@ public:
 
     }
 
-	static void get_extrinsics(const rs2::stream_profile& from_stream, const rs2::stream_profile& to_stream)
-	{
-		// If the device/sensor that you are using contains more than a single stream, and it was calibrated
-		// then the SDK provides a way of getting the transformation between any two streams (if such exists)
-		try
-		{
-			// Given two streams, use the get_extrinsics_to() function to get the transformation from the stream to the other stream
-			rs2_extrinsics extrinsics = from_stream.get_extrinsics_to(to_stream);
-			std::cout << "Translation Vector : [" << extrinsics.translation[0] << "," << extrinsics.translation[1] << "," << extrinsics.translation[2] << "]\n";
-			std::cout << "Rotation Matrix    : [" << extrinsics.rotation[0] << "," << extrinsics.rotation[3] << "," << extrinsics.rotation[6] << "]\n";
-			std::cout << "                   : [" << extrinsics.rotation[1] << "," << extrinsics.rotation[4] << "," << extrinsics.rotation[7] << "]\n";
-			std::cout << "                   : [" << extrinsics.rotation[2] << "," << extrinsics.rotation[5] << "," << extrinsics.rotation[8] << "]" << std::endl;
-		}
-		catch (const std::exception& e)
-		{
-			std::cerr << "Failed to get extrinsics for the given streams. " << e.what() << std::endl;
-		}
-	}
 
 	void render_textures(int cols, int rows, float view_width, float view_height)
 	{
@@ -228,6 +208,8 @@ private:
     std::mutex _mutex;
     std::map<std::string, view_port> _devices;
 };
+// Helper function to register to UI events
+void register_glfw_callbacks(window& app, state& app_state);
 
 
 int main(int argc, char * argv[]) try
@@ -235,8 +217,14 @@ int main(int argc, char * argv[]) try
 	int call_count = 0;
     // Create a simple OpenGL window for rendering:
     window app(1280, 960, "REALSENSE OF HUMOUR");
+	device_container connected_devices;
 
-    device_container connected_devices;
+	state app_state;
+	app_state.ruler_start = { 0.45f, 0.5f };
+	app_state.ruler_end = { 0.55f, 0.5f };
+
+	register_glfw_callbacks(app, app_state);
+
 
     rs2::context ctx;    // Create librealsense context for managing devices
 
@@ -277,7 +265,20 @@ int main(int argc, char * argv[]) try
         float view_height = (app.height() / rows);
 
         connected_devices.render_textures(cols, rows, view_width, view_height);
+		{
+			// Take the lock, to make sure the path is not modified
+			// while we are rendering it
+			//std::lock_guard<std::mutex> lock(_mutex);
 
+			// Use 1-Color model to invert background colors
+			glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+
+			// Render the ruler
+			app_state.ruler_start.render(app);
+			app_state.ruler_end.render(app);
+
+			glColor3f(1.f, 1.f, 1.f);
+		}
 		call_count++;
     }
 
@@ -292,4 +293,42 @@ catch (const std::exception & e)
 {
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
+}
+// Implement drag&drop behaviour for the buttons:
+void register_glfw_callbacks(window& app, state& app_state)
+{
+	app.on_left_mouse = [&](bool pressed)
+	{
+		app_state.mouse_down = pressed;
+	};
+
+	app.on_mouse_move = [&](double x, double y)
+	{
+		toggle cursor{ float(x) / app.width(), float(y) / app.height() };
+		std::vector<toggle*> toggles{
+			&app_state.ruler_start,
+			&app_state.ruler_end };
+
+		if (app_state.mouse_down)
+		{
+			toggle* best = toggles.front();
+			for (auto&& t : toggles)
+			{
+				if (t->dist_2d(cursor) < best->dist_2d(cursor))
+				{
+					best = t;
+				}
+			}
+			best->selected = true;
+		}
+		else
+		{
+			for (auto&& t : toggles) t->selected = false;
+		}
+
+		for (auto&& t : toggles)
+		{
+			if (t->selected) *t = cursor;
+		}
+	};
 }

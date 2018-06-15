@@ -9,6 +9,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#define _USE_MATH_DEFINES
 
 //////////////////////////////
 // Basic Data Types         //
@@ -16,6 +17,10 @@
 
 struct float3 { float x, y, z; };
 struct float2 { float x, y; };
+using pixel = std::pair<int, int>;
+
+// Neighbors function returns 12 fixed neighboring pixels in an image
+std::array<pixel, 12> neighbors(rs2::depth_frame frame, pixel p);
 
 struct rect
 {
@@ -225,6 +230,65 @@ struct glfw_state {
     float offset_x;
     float offset_y;
     texture tex;
+};
+// Toggle helper class will be used to render the two buttons
+// controlling the edges of our ruler
+struct toggle
+{
+	toggle() : x(0.f), y(0.f) {}
+	toggle(float x, float y)
+		: x(std::min(std::max(x, 0.f), 1.f)),
+		y(std::min(std::max(y, 0.f), 1.f))
+	{}
+
+	// Move from [0,1] space to pixel space of specific frame
+	pixel get_pixel(rs2::depth_frame frame) const
+	{
+		int px = x * frame.get_width();
+		int py = y * frame.get_height();
+		return{ px, py };
+	}
+
+	void render(const window& app)
+	{
+		// Render a circle
+		const float r = 10;
+		const float segments = 16;
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+		glColor3f(0.f, 1.0f, 0.0f);
+		glLineWidth(2);
+		glBegin(GL_LINE_STRIP);
+		for (auto i = 0; i <= segments; i++)
+		{
+			auto t = 2 * M_PI * float(i) / segments;
+			glVertex2f(x * app.width() + cos(t) * r,
+				y * app.height() + sin(t) * r);
+		}
+		glEnd();
+		glDisable(GL_BLEND);
+		glColor3f(1.f, 1.f, 1.f);
+	}
+
+	// This helper function is used to find the button
+	// closest to the mouse cursor
+	// Since we are only comparing this distance, sqrt can be safely skipped
+	float dist_2d(const toggle& other) const
+	{
+		return pow(x - other.x, 2) + pow(y - other.y, 2);
+	}
+
+	float x;
+	float y;
+	bool selected = false;
+};
+
+// Application state shared between the main-thread and GLFW events
+struct state
+{
+	bool mouse_down = false;
+	toggle ruler_start;
+	toggle ruler_end;
 };
 
 
