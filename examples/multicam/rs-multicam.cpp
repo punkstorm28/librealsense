@@ -29,6 +29,11 @@ class device_container
 
 public:
 
+	state pointMarkers;
+	device_container(state pointMarker) {
+		pointMarkers = pointMarker;
+	}
+
     void enable_device(rs2::device dev)
     {
         std::string serial_number(dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER));
@@ -135,9 +140,9 @@ public:
 				
 				profiles[current_device] = frames[current_device].get_profile();
 				//std::vector<std::vector<float>> vec1 = getPixelCloud(frames[current_device]);
-				if (current_device ==2) {
-					//writeVerticesToCsv(frames[current_device]);
-				    //exit(9);
+				if (current_device ==0) {
+					writeVerticesToCsv(frames[current_device]);
+				    exit(9);
 				}
 
             }
@@ -152,6 +157,7 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
 		int stream_no = 0;
+		
 		for (auto&& view : _devices)
 		{
 			// For each device get its frames
@@ -167,7 +173,15 @@ public:
 				{
 					rect adjuested = frame_location.adjust_ratio({ static_cast<float>(vid_frame.get_width())
 						, static_cast<float>(vid_frame.get_height()) });
+
 					view.second.tex.show(adjuested);
+					switch (stream_no) {
+					case 1:
+						float marker_point_1 = pointMarkers.point1A.y;
+						std::cout <<"Point 1 =" <<marker_point_1 << std::endl;
+						break;
+					}
+
 					stream_no++;
 				}
 			}
@@ -177,7 +191,7 @@ public:
 	void writeVerticesToCsv(rs2::depth_frame frame)
 	{
 		std::stringstream csv_file;
-		csv_file << "robot1_45.csv";
+		csv_file << "cam2.csv";
 		metadata_to_csv(frame, csv_file.str());
 	}
 
@@ -190,13 +204,19 @@ public:
 		rs2::points points = cloud.calculate(frame);
 
 		auto vertices = points.get_vertices();
-
-		for (int i = 0; i < points.size(); i++)
+		
+		
+		for (int i = 0; i <= 640; i++)
 		{
-			if (vertices[i].z)
-			{
-				csv << vertices[i].x << "," << vertices[i].y << "," << vertices[i].z << "\n";
+			for (int j = 0; j <= 480; j++) {
+				/*if (vertices[i].z)
+				{
+					csv << vertices[i].x << "," << vertices[i].y << "," << vertices[i].z << "\n";
+				}*/
+
+				csv << i << "," << j << "," << frame.get_distance(i,j) << "\n";
 			}
+			
 		}
 
 		csv.close();
@@ -217,13 +237,20 @@ int main(int argc, char * argv[]) try
 	int call_count = 0;
     // Create a simple OpenGL window for rendering:
     window app(1280, 960, "REALSENSE OF HUMOUR");
-	device_container connected_devices;
+	state point_markers;
 
-	state app_state;
-	app_state.ruler_start = { 0.45f, 0.5f };
-	app_state.ruler_end = { 0.55f, 0.5f };
+	device_container connected_devices(point_markers);
 
-	register_glfw_callbacks(app, app_state);
+	point_markers.point1A = { 0.15f, 0.5f };
+	point_markers.point1B = { 0.25f, 0.5f };
+
+	point_markers.point2A = { 0.45f, 0.5f };
+	point_markers.point2B = { 0.55f, 0.5f };
+
+	point_markers.point3A = { 0.75f, 0.5f };
+	point_markers.point3B = { 0.85f, 0.5f };
+
+	register_glfw_callbacks(app, point_markers);
 
 
     rs2::context ctx;    // Create librealsense context for managing devices
@@ -258,24 +285,29 @@ int main(int argc, char * argv[]) try
         {
             draw_text(0, 10, "Please connect another camera");
         }
+
         int cols = int(std::ceil(std::sqrt(total_number_of_streams)));
         int rows = int(std::ceil(total_number_of_streams / static_cast<float>(cols)));
 
         float view_width = (app.width() / cols);
         float view_height = (app.height() / rows);
 
+		//std::cout << "view_height = " << view_height << " view_width = " << view_width <<"rows"<<rows<<"  coulumns = "<<cols<< std::endl;
         connected_devices.render_textures(cols, rows, view_width, view_height);
 		{
-			// Take the lock, to make sure the path is not modified
-			// while we are rendering it
-			//std::lock_guard<std::mutex> lock(_mutex);
-
+		
 			// Use 1-Color model to invert background colors
-			glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+			//glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
 
 			// Render the ruler
-			app_state.ruler_start.render(app);
-			app_state.ruler_end.render(app);
+			point_markers.point1A.render_shape(app, 3);
+			point_markers.point1B.render_shape(app, 4);
+
+			point_markers.point2A.render_shape(app, 3);
+			point_markers.point2B.render_shape(app, 4);
+
+			point_markers.point3A.render_shape(app, 3);
+			point_markers.point3B.render_shape(app, 4);
 
 			glColor3f(1.f, 1.f, 1.f);
 		}
@@ -306,8 +338,13 @@ void register_glfw_callbacks(window& app, state& app_state)
 	{
 		toggle cursor{ float(x) / app.width(), float(y) / app.height() };
 		std::vector<toggle*> toggles{
-			&app_state.ruler_start,
-			&app_state.ruler_end };
+			&app_state.point1A,
+			&app_state.point1B,
+			&app_state.point2A,
+			&app_state.point2B,
+			&app_state.point3A,
+			&app_state.point3B
+		};
 
 		if (app_state.mouse_down)
 		{

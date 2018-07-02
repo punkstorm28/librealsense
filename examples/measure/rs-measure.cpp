@@ -43,7 +43,7 @@ struct toggle
         return{ px, py };
     }
 
-    void render(const window& app)
+    void render_circle(const window& app)
     {
         // Render a circle
         const float r = 10;
@@ -81,8 +81,8 @@ struct toggle
 struct state
 {
     bool mouse_down = false;
-    toggle ruler_start;
-    toggle ruler_end;
+    toggle point1A;
+    toggle point1B;
 };
 
 // Helper function to register to UI events
@@ -163,8 +163,8 @@ int main(int argc, char * argv[]) try
 
     // Define application state and position the ruler buttons
     state app_state;
-    app_state.ruler_start = { 0.45f, 0.5f };
-    app_state.ruler_end   = { 0.55f, 0.5f };
+    app_state.point1A = { 0.45f, 0.5f };
+    app_state.point1B   = { 0.55f, 0.5f };
     register_glfw_callbacks(app, app_state);
 
     // After initial post-processing, frames will flow into this queue:
@@ -246,8 +246,8 @@ int main(int argc, char * argv[]) try
                 using dv = std::pair<float, pixel>;
 
                 // Define source, target and a terminator pixel
-                pixel src = app_state.ruler_start.get_pixel(depth);
-                pixel trg = app_state.ruler_end.get_pixel(depth);
+                pixel src = app_state.point1A.get_pixel(depth);
+                pixel trg = app_state.point1B.get_pixel(depth);
                 pixel token{ -1, -1 }; // When we see this value we know we reached source
 
                 // Dist holds distances of every pixel from source
@@ -357,8 +357,8 @@ int main(int argc, char * argv[]) try
                 render_simple_distance(depth, app_state, app);
 
                 // Render the ruler
-                app_state.ruler_start.render(app);
-                app_state.ruler_end.render(app);
+                app_state.point1A.render_circle(app);
+                app_state.point1B.render_circle(app);
 
                 glColor3f(1.f, 1.f, 1.f);
             }
@@ -460,15 +460,15 @@ void render_simple_distance(const rs2::depth_frame& depth,
     glEnable(GL_LINE_STIPPLE);
     glLineWidth(5);
     glBegin(GL_LINE_STRIP);
-    glVertex2f(s.ruler_start.x * app.width(),
-               s.ruler_start.y * app.height());
-    glVertex2f(s.ruler_end.x * app.width(),
-               s.ruler_end.y * app.height());
+    glVertex2f(s.point1A.x * app.width(),
+               s.point1A.y * app.height());
+    glVertex2f(s.point1B.x * app.width(),
+               s.point1B.y * app.height());
     glEnd();
     glPopAttrib();
 
-    auto from_pixel = s.ruler_start.get_pixel(depth);
-    auto to_pixel =   s.ruler_end.get_pixel(depth);
+    auto from_pixel = s.point1A.get_pixel(depth);
+    auto to_pixel =   s.point1B.get_pixel(depth);
     float air_dist = dist_3d(depth, from_pixel, to_pixel);
 
     center.first  = (from_pixel.first + to_pixel.first) / 2;
@@ -524,8 +524,8 @@ void register_glfw_callbacks(window& app, state& app_state)
     {
         toggle cursor{ float(x) / app.width(), float(y) / app.height() };
         std::vector<toggle*> toggles{
-            &app_state.ruler_start,
-            &app_state.ruler_end };
+            &app_state.point1A,
+            &app_state.point1B };
 
         if (app_state.mouse_down)
         {

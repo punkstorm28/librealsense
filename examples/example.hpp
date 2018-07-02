@@ -9,6 +9,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <cstdlib>
 #define _USE_MATH_DEFINES
 
 //////////////////////////////
@@ -235,6 +236,8 @@ struct glfw_state {
 // controlling the edges of our ruler
 struct toggle
 {
+	float toggleZ;
+
 	toggle() : x(0.f), y(0.f) {}
 	toggle(float x, float y)
 		: x(std::min(std::max(x, 0.f), 1.f)),
@@ -249,14 +252,18 @@ struct toggle
 		return{ px, py };
 	}
 
-	void render(const window& app)
+	void render_shape(const window& app, float segments)
 	{
 		// Render a circle
 		const float r = 10;
-		const float segments = 16;
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
-		glColor3f(0.f, 1.0f, 0.0f);
+
+		float red = (rand() % 10)/ 10.0f;
+	
+		float blu = (rand() % 10) / 10.0f;
+		float gre = (rand() % 10) / 10.0f;
+		glColor3f(red, blu, gre);
 		glLineWidth(2);
 		glBegin(GL_LINE_STRIP);
 		for (auto i = 0; i <= segments; i++)
@@ -267,7 +274,7 @@ struct toggle
 		}
 		glEnd();
 		glDisable(GL_BLEND);
-		glColor3f(1.f, 1.f, 1.f);
+		//glColor3f(1.f, 1.f, 1.f);
 	}
 
 	// This helper function is used to find the button
@@ -287,8 +294,14 @@ struct toggle
 struct state
 {
 	bool mouse_down = false;
-	toggle ruler_start;
-	toggle ruler_end;
+	toggle point1A;
+	toggle point1B;
+
+	toggle point2A;
+	toggle point2B;
+
+	toggle point3A;
+	toggle point3B;
 };
 
 
